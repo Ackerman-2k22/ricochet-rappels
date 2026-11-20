@@ -1,0 +1,45 @@
+name: Collecte RappelConso
+
+on:
+  schedule:
+    - cron: "17 * * * *" # minute 17 : on évite la congestion du début d'heure
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect-rappels
+  cancel-in-progress: false
+
+jobs:
+  collecte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Collecte (fenêtre glissante, dédoublonnée sur numero_fiche + numero_version)
+        run: python src/rappels/collect/rappelconso.py --dossier data/bronze/rappels
+
+      - name: Commit des fiches nouvelles
+        run: |
+          git add data/bronze/rappels
+          if git diff --cached --quiet; then
+            echo "Aucune fiche nouvelle."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "collecte: fiches RappelConso au $(date -u +%Y-%m-%dT%H:%MZ)"
+          for essai in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 10
+          done
+          exit 1

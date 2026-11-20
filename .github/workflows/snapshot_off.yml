@@ -1,0 +1,78 @@
+name: Instantané Open Food Facts
+
+on:
+  schedule:
+    - cron: "23 4 * * 1" # chaque lundi à 04:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot-off
+  cancel-in-progress: false
+
+env:
+  URL_OFF: https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  instantane:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Date de l'export Open Food Facts
+        id: export
+        run: |
+          lm=$(curl -sSIL "$URL_OFF" | grep -i '^last-modified:' | tail -1 | cut -d' ' -f2- | tr -d '\r')
+          jour=$(date -u -d "$lm" +%F)
+          echo "jour=$jour" >> "$GITHUB_OUTPUT"
+          echo "tag=off-$jour" >> "$GITHUB_OUTPUT"
+          echo "fichier=off_$jour.parquet" >> "$GITHUB_OUTPUT"
+          echo "Export du $jour ($lm)"
+
+      - name: Déjà publié ?
+        id: existe
+        run: |
+          if gh release view "${{ steps.export.outputs.tag }}" --json assets -q '.assets[].name' 2>/dev/null \
+              | grep -qx "${{ steps.export.outputs.fichier }}"; then
+            echo "oui=1" >> "$GITHUB_OUTPUT"
+            echo "Instantané ${{ steps.export.outputs.jour }} déjà publié : rien à faire."
+          fi
+
+      - uses: actions/setup-python@v7
+        if: steps.existe.outputs.oui != '1'
+        with:
+          python-version: "3.12"
+
+      - name: Téléchargement (gardé compressé)
+        if: steps.existe.outputs.oui != '1'
+        run: |
+          pip install duckdb
+          curl -sSfL --retry 3 -o off.csv.gz "$URL_OFF"
+          ls -l off.csv.gz
+
+      - name: Parquet (colonnes utiles)
+        if: steps.existe.outputs.oui != '1'
+        run: |
+          python src/rappels/collect/off_snapshot.py --source off.csv.gz \
+            --sortie "${{ steps.export.outputs.fichier }}" | tee resume.json
+
+      - name: Publication en Release
+        if: steps.existe.outputs.oui != '1'
+        run: |
+          cat > notes.md <<EOF
+          Instantané d'Open Food Facts, export du ${{ steps.export.outputs.jour }}, colonnes réduites.
+
+          Résumé : $(cat resume.json)
+
+          Données © les contributeurs d'Open Food Facts, sous licence
+          [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Ce fichier est une base dérivée,
+          publiée sous la même licence. Voir DATA_LICENSE.md.
+          EOF
+          gh release view "${{ steps.export.outputs.tag }}" >/dev/null 2>&1 \
+            || gh release create "${{ steps.export.outputs.tag }}" \
+                 --title "Open Food Facts ${{ steps.export.outputs.jour }}" --notes-file notes.md
+          gh release upload "${{ steps.export.outputs.tag }}" "${{ steps.export.outputs.fichier }}" --clobber

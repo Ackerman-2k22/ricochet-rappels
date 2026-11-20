@@ -1,0 +1,40 @@
+name: Test de faisabilité
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  faisabilite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e .
+
+      - name: Export RappelConso V2 (jeu complet, pas le jeu trié par GTIN)
+        run: |
+          curl -sSfL --compressed --retry 3 -o rappelconso.csv \
+            "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/rappelconso-v2-gtin-espaces/exports/csv?delimiter=%3B"
+          ls -l rappelconso.csv
+
+      - name: Export Open Food Facts (gardé compressé)
+        run: |
+          curl -sSfL --retry 3 -o off.csv.gz \
+            https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz
+          ls -l off.csv.gz
+
+      - name: Comptages
+        run: python scripts/test_faisabilite.py --rappels rappelconso.csv --off off.csv.gz --sortie rapport
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rapport-faisabilite
+          path: rapport/

@@ -1,0 +1,19 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Données : tout est ignoré sauf la collecte RappelConso (petite, commitée par le workflow horaire)
+data/*
+!data/bronze/
+data/bronze/*
+!data/bronze/rappels/
+*.parquet
+*.csv.gz
+
+# Sorties locales
+rapport/
+mlruns/
