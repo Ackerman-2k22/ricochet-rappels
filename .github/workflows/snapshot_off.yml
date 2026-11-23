@@ -1,8 +1,11 @@
 name: Instantané Open Food Facts
 
 on:
+  # Un instantané par semaine, mais deux tentatives par jour : GitHub ne déclenche pas toujours
+  # les exécutions planifiées (celle du lundi 23/11/2026 n'a jamais eu lieu). Les tentatives
+  # suivantes s'arrêtent dès que la semaine de l'export est couverte.
   schedule:
-    - cron: "23 4 * * 1" # chaque lundi à 04:23 UTC
+    - cron: "23 4,16 * * *"
   workflow_dispatch:
 
 permissions:
@@ -33,14 +36,21 @@ jobs:
           echo "fichier=off_$jour.parquet" >> "$GITHUB_OUTPUT"
           echo "Export du $jour ($lm)"
 
-      - name: Déjà publié ?
+      - name: Semaine déjà couverte ?
         id: existe
         run: |
-          if gh release view "${{ steps.export.outputs.tag }}" --json assets -q '.assets[].name' 2>/dev/null \
-              | grep -qx "${{ steps.export.outputs.fichier }}"; then
-            echo "oui=1" >> "$GITHUB_OUTPUT"
-            echo "Instantané ${{ steps.export.outputs.jour }} déjà publié : rien à faire."
-          fi
+          # Semaine ISO de la date d'export, pas du jour d'exécution
+          semaine=$(date -u -d "${{ steps.export.outputs.jour }}" +%G-W%V)
+          for tag in $(gh release list --limit 500 --json tagName -q '.[].tagName | select(startswith("off-"))'); do
+            jour_tag=${tag#off-}
+            [ "$(date -u -d "$jour_tag" +%G-W%V)" = "$semaine" ] || continue
+            if gh release view "$tag" --json assets -q '.assets[].name' | grep -qx "off_$jour_tag.parquet"; then
+              echo "oui=1" >> "$GITHUB_OUTPUT"
+              echo "Semaine $semaine déjà couverte par $tag : rien à faire."
+              exit 0
+            fi
+          done
+          echo "Semaine $semaine sans instantané : publication de l'export du ${{ steps.export.outputs.jour }}."
 
       - uses: actions/setup-python@v7
         if: steps.existe.outputs.oui != '1'
