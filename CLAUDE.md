@@ -80,15 +80,19 @@ Contrainte : 3 portables personnels, pas de serveur, 0 €. Deux modes d'exécut
   - Il écrit seulement les couples `(numero_fiche, numero_version)` absents, dans `data/bronze/rappels/date=YYYY-MM-DD/rappels_YYYYMMDDTHHMMSSZ.jsonl.gz`. La date est celle de la **collecte** (UTC) et chaque fiche porte `_collecte_utc`.
   - Le premier lancement récupère tout l'historique (19 284 fiches, 5,8 Mo compressé au 20/11/2026). Le JSONL non compressé ferait 47 Mo, d'où le gzip.
   - Les fichiers sont commités dans le dépôt. Ensuite, c'est très petit : 5 à 6 rappels par jour.
-- `snapshot_off.yml` : chaque lundi (`23 4 * * 1`). Il lance `src/rappels/collect/off_snapshot.py` : DuckDB lit l'export OFF en streaming, garde **toutes les lignes** mais **uniquement les colonnes utiles**, et écrit un Parquet zstd.
+- `snapshot_off.yml` : **un instantané par semaine ISO** (semaine de la date d'export), avec deux tentatives par jour (`23 4,16 * * *`), parce que GitHub ne déclenche pas toujours les exécutions planifiées. Il lance `src/rappels/collect/off_snapshot.py` : DuckDB lit l'export OFF en streaming, garde **toutes les lignes** mais **uniquement les colonnes utiles**, et écrit un Parquet zstd.
   - Le fichier est daté par l'en-tête `Last-Modified` de l'export (`off_YYYY-MM-DD.parquet`, Release `off-YYYY-MM-DD`). Il est publié comme **asset de GitHub Release** (limite 2 Go par fichier).
   - Mesure du 20/11/2026 : 4 922 927 produits, 144 Mo, 35 s sur un portable.
-  - Si l'asset existe déjà, le workflow ne fait rien. Il ne commite jamais de gros fichier dans le dépôt (limite 100 Mo par fichier, historique git qui gonfle).
+  - Si une Release de la même semaine ISO a déjà son asset, le workflow s'arrête avant le téléchargement (environ 15 s). Il ne commite jamais de gros fichier dans le dépôt (limite 100 Mo par fichier, historique git qui gonfle).
 - `faisabilite.yml` : déclenchement manuel (`workflow_dispatch`). Il lance `scripts/test_faisabilite.py` sur les vrais exports et publie `rapport/` en artefact.
 - `ci.yml` : à chaque push sur `main` et à chaque PR, il lance `ruff check`, `ruff format --check` et `pytest` (Python 3.11, la version minimale).
 
 Pièges GitHub Actions à respecter :
 - Intervalle minimal de 5 min ; les exécutions planifiées peuvent être retardées ou sautées.
+- Mesure du 20 au 23/11/2026 : la collecte « horaire » n'a été déclenchée que **9 fois en 60 h** (une fois toutes les 4 à 8 h). L'instantané du lundi 23/11 à 04:23 n'a **jamais** été déclenché ; il a été lancé à la main.
+  - Aucune fiche n'est perdue, grâce à la fenêtre de 30 jours.
+  - En revanche, `_collecte_utc` peut retarder de 8 h sur `date_publication`. Ce retard s'ajoute avant la publication d'une liste « à surveiller » : un rappel suivant publié avant le commit de la liste ne compte pas pour le juge vivant.
+  - Pour l'antériorité, comparer l'horodatage du commit ou de la Release de la liste à `date_publication` du rappel suivant, jamais à `_collecte_utc`.
 - Les workflows planifiés ne tournent **que depuis la branche par défaut**.
 - Sur un dépôt public, les workflows planifiés sont **désactivés après 60 jours sans activité** du dépôt. Le commit horaire des rappels maintient l'activité. Ne pas le supprimer.
 - Runner Linux standard (dépôt public) : 4 vCPU, 16 Go de RAM, ~14 Go de SSD. Le snapshot OFF doit tenir dedans : streaming, pas de décompression.
@@ -167,7 +171,7 @@ Pièges GitHub Actions à respecter :
 | 8 → 19 févr. | Restitution | appli, tableau de bord, gouvernance |
 | sem. du 8 mars | Présentation | résultats face au juge vivant |
 
-Entre les blocs (périodes en entreprise), seuls les workflows GitHub Actions tournent. **Chaque semaine d'instantané OFF manquée est perdue** : surveiller les échecs du workflow hebdomadaire.
+Entre les blocs (périodes en entreprise), seuls les workflows GitHub Actions tournent. **Chaque semaine d'instantané OFF manquée est perdue.** Une exécution planifiée que GitHub ne déclenche pas n'envoie aucune alerte : vérifier chaque semaine dans les Releases que la semaine en cours a son `off-YYYY-MM-DD`, et lancer `snapshot_off.yml` à la main sinon.
 
 ## 10. Structure du dépôt (cible)
 

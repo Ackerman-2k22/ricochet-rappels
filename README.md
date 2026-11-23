@@ -24,8 +24,8 @@ Voir [DATA_LICENSE.md](DATA_LICENSE.md). Aucune donnée personnelle n'est collec
 
 | Workflow | Quand | Ce qu'il fait |
 |---|---|---|
-| `collect_rappels.yml` | toutes les heures (minute 17) | ajoute les fiches RappelConso nouvelles ou modifiées dans `data/bronze/rappels/` |
-| `snapshot_off.yml` | chaque lundi | publie un instantané réduit d'Open Food Facts en Parquet dans les Releases |
+| `collect_rappels.yml` | toutes les heures (minute 17), en pratique toutes les 4 à 8 h | ajoute les fiches RappelConso nouvelles ou modifiées dans `data/bronze/rappels/` |
+| `snapshot_off.yml` | deux tentatives par jour | publie dans les Releases un instantané réduit d'Open Food Facts en Parquet, un par semaine |
 | `faisabilite.yml` | à la demande | lance `scripts/test_faisabilite.py` sur les exports du jour |
 | `ci.yml` | à chaque push et PR | ruff et pytest |
 
